@@ -54,6 +54,7 @@ func init() {
 }
 
 type serverConfig struct {
+	V2board 			  *v2boardConfig              `mapstructure:"v2board"` 
 	Listen                string                      `mapstructure:"listen"`
 	Obfs                  serverConfigObfs            `mapstructure:"obfs"`
 	TLS                   *serverConfigTLS            `mapstructure:"tls"`
@@ -71,6 +72,14 @@ type serverConfig struct {
 	Outbounds             []serverConfigOutboundEntry `mapstructure:"outbounds"`
 	TrafficStats          serverConfigTrafficStats    `mapstructure:"trafficStats"`
 	Masquerade            serverConfigMasquerade      `mapstructure:"masquerade"`
+}
+
+type v2boardConfig struct {
+	ApiHost      string        `mapstructure:"apiHost"`
+	ApiKey       string        `mapstructure:"apiKey"`
+	NodeID       uint          `mapstructure:"nodeID"`
+	PullInterval time.Duration `mapstructure:"pullInterval"`
+	PushInterval time.Duration `mapstructure:"pushInterval"`
 }
 
 type serverConfigObfsSalamander struct {
@@ -768,6 +777,14 @@ func (c *serverConfig) fillAuthenticator(hyConfig *server.Config) error {
 			return configError{Field: "auth.command", Err: errors.New("empty auth command")}
 		}
 		hyConfig.Authenticator = &auth.CommandAuthenticator{Cmd: c.Auth.Command}
+		return nil
+	case "v2board":
+		v2boardConfig := c.V2board
+		if v2boardConfig.ApiHost == "" || v2boardConfig.ApiKey == "" || v2boardConfig.NodeID == 0 {
+			return configError{Field: "auth.v2board", Err: errors.New("v2board config error")}
+		}
+		hyConfig.Authenticator = &auth.V2boardApiProvider{URL: fmt.Sprintf("%s?token=%s&node_id=%d&node_type=hysteria", c.V2board.ApiHost+"/api/v1/server/UniProxy/user", c.V2board.ApiKey, c.V2board.NodeID)}
+
 		return nil
 	default:
 		return configError{Field: "auth.type", Err: errors.New("unsupported auth type")}

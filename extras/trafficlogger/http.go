@@ -1,6 +1,8 @@
 package trafficlogger
 
 import (
+	"bytes"
+	"errors"
 	"cmp"
 	"encoding/json"
 	"fmt"
@@ -48,6 +50,55 @@ type trafficStatsServerImpl struct {
 type trafficStatsEntry struct {
 	Tx uint64 `json:"tx"`
 	Rx uint64 `json:"rx"`
+}
+
+func (s *trafficStatsServerImpl) PushTrafficToV2boardInterval(url string, interval time.Duration) {
+	fmt.Println("Pushing traffic usage for v2board per ", interval)
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		if err := s.PushTrafficToV2board(url); err != nil {
+			fmt.Println("Failed to push traffic usage for v2board: ", err)
+		}
+	}
+
+}
+
+type TrafficPushRequest struct {
+	Data map[string][2]int64
+}
+
+func (s *trafficStatsServerImpl) PushTrafficToV2board(url string) error {
+	s.Mutex.Lock()         // 写锁，阻止其他操作 StatsMap 的并发访问
+	defer s.Mutex.Unlock() // 确保在函数退出时释放写锁
+
+	request := TrafficPushRequest{
+		Data: make(map[string][2]int64),
+	}
+	for id, stats := range s.StatsMap {
+		request.Data[id] = [2]int64{int64(stats.Tx), int64(stats.Rx)}
+	}
+	if len(request.Data) == 0 {
+		return nil
+	}
+	jsonData, err := json.Marshal(request.Data)
+	if err != nil {
+		return err
+	}
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		fmt.Println(resp)
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return errors.New("HTTP request failed with status code: " + resp.Status)
+	}
+	s.StatsMap = make(map[string]*trafficStatsEntry)
+
+	return nil
 }
 
 func (s *trafficStatsServerImpl) LogTraffic(id string, tx, rx uint64) (ok bool) {
@@ -297,4 +348,11 @@ func (s *trafficStatsServerImpl) kick(w http.ResponseWriter, r *http.Request) {
 	s.Mutex.Unlock()
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func (s *trafficStatsServerImpl) NewKick(id string) bool {
+	s.Mutex.Lock()
+	s.KickMap[id] = struct{}{}
+	s.Mutex.Unlock()
+	return true
 }
