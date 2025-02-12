@@ -54,7 +54,7 @@ func init() {
 }
 
 type serverConfig struct {
-	V2board 			  *v2boardConfig              `mapstructure:"v2board"` 
+	V2board               *v2boardConfig              `mapstructure:"v2board"`
 	Listen                string                      `mapstructure:"listen"`
 	Obfs                  serverConfigObfs            `mapstructure:"obfs"`
 	TLS                   *serverConfigTLS            `mapstructure:"tls"`
@@ -797,10 +797,26 @@ func (c *serverConfig) fillEventLogger(hyConfig *server.Config) error {
 }
 
 func (c *serverConfig) fillTrafficLogger(hyConfig *server.Config) error {
+	pullInterval := time.Second * 5
+	if c.V2board.PullInterval > 0 {
+		pullInterval = time.Duration(c.V2board.PullInterval) * time.Second
+	}
+	pushInterval := time.Second * 60
+	if c.V2board.PushInterval > 0 {
+		pushInterval = time.Duration(c.V2board.PushInterval) * time.Second
+	}
+	userURL := fmt.Sprintf("%s?token=%s&node_id=%d&node_type=hysteria", c.V2board.ApiHost+"/api/v1/server/UniProxy/user", c.V2board.ApiKey, c.V2board.NodeID)
+	pushURL := fmt.Sprintf("%s?token=%s&node_id=%d&node_type=hysteria", c.V2board.ApiHost+"/api/v1/server/UniProxy/push", c.V2board.ApiKey, c.V2board.NodeID)
 	if c.TrafficStats.Listen != "" {
 		tss := trafficlogger.NewTrafficStatsServer(c.TrafficStats.Secret)
 		hyConfig.TrafficLogger = tss
+		if c.V2board != nil && c.V2board.ApiHost != "" {
+			go auth.UpdateUsers(userURL, pullInterval, hyConfig.TrafficLogger)
+			go hyConfig.TrafficLogger.PushTrafficToV2boardInterval(pushURL, pushInterval)
+		}
 		go runTrafficStatsServer(c.TrafficStats.Listen, tss)
+	} else {
+		go auth.UpdateUsers(userURL, pullInterval, nil)
 	}
 	return nil
 }

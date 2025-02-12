@@ -53,14 +53,14 @@ type trafficStatsEntry struct {
 }
 
 func (s *trafficStatsServerImpl) PushTrafficToV2boardInterval(url string, interval time.Duration) {
-	fmt.Println("Pushing traffic usage for v2board per ", interval)
+	fmt.Println("Pushing traffic usage for v2board per", interval)
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for range ticker.C {
 		if err := s.PushTrafficToV2board(url); err != nil {
-			fmt.Println("Failed to push traffic usage for v2board: ", err)
+			fmt.Println("Failed to push traffic usage for v2board:", err)
 		}
 	}
 
